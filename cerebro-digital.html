@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CEREBRO DIGITAL</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --kick:   #ff3255;
+  --bass:   #9d3cff;
+  --voice:  #00dcff;
+  --hihats: #ffdc32;
+  --bg:     #04040a;
+}
+
+body {
+  background: var(--bg);
+  color: white;
+  font-family: 'Share Tech Mono', monospace;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+}
+
+canvas { display: block; }
+
+header {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 20;
+  padding: 14px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(to bottom, rgba(4,4,10,0.95) 0%, transparent 100%);
+}
+
+.logo {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 900;
+  font-size: 1.05rem;
+  letter-spacing: 0.35em;
+  color: white;
+  text-shadow: 0 0 24px rgba(0,220,255,0.5);
+}
+.logo em { font-style: normal; color: var(--voice); }
+
+.controls { display: flex; gap: 8px; align-items: center; }
+
+.btn {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  padding: 7px 14px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.7);
+  cursor: pointer;
+  transition: all 0.2s;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.btn:hover { background: rgba(0,220,255,0.1); border-color: rgba(0,220,255,0.5); color: var(--voice); }
+.btn.active { background: rgba(0,220,255,0.18); border-color: var(--voice); color: var(--voice); box-shadow: 0 0 14px rgba(0,220,255,0.25); }
+.btn.kick-act { background: rgba(255,50,85,0.18); border-color: var(--kick); color: var(--kick); box-shadow: 0 0 14px rgba(255,50,85,0.25); }
+
+#fileInput { display: none; }
+
+/* ── HUD bottom ── */
+.hud {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 20;
+  padding: 12px 22px 16px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  background: linear-gradient(to top, rgba(4,4,10,0.95) 0%, transparent 100%);
+}
+
+.bands { display: flex; gap: 14px; align-items: flex-end; }
+
+.band { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+
+.band-bar {
+  width: 36px;
+  height: 55px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  position: relative;
+  overflow: hidden;
+}
+
+.band-fill {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 0%;
+  transition: height 0.04s;
+  border-radius: 1px 1px 0 0;
+}
+
+.band-label {
+  font-size: 0.52rem;
+  letter-spacing: 0.2em;
+  opacity: 0.65;
+}
+
+.band-pulse {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.06s, transform 0.06s;
+  transform: scale(0.5);
+}
+.band-pulse.flash { opacity: 1; transform: scale(1.4); }
+
+.hud-right { text-align: right; }
+
+.status {
+  font-size: 0.6rem;
+  letter-spacing: 0.15em;
+  color: var(--voice);
+  opacity: 0.7;
+  margin-bottom: 5px;
+}
+
+.hint {
+  font-size: 0.52rem;
+  opacity: 0.28;
+  line-height: 1.9;
+  letter-spacing: 0.1em;
+}
+
+/* ── Splash ── */
+.splash {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+  z-index: 10;
+  transition: opacity 1.2s;
+}
+.splash.hidden { opacity: 0; }
+.splash h2 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(1.4rem, 4vw, 2.6rem);
+  font-weight: 900;
+  letter-spacing: 0.3em;
+  color: white;
+  text-shadow: 0 0 40px rgba(0,220,255,0.4), 0 0 80px rgba(0,220,255,0.15);
+  margin-bottom: 10px;
+}
+.splash p {
+  font-size: 0.68rem;
+  letter-spacing: 0.22em;
+  opacity: 0.38;
+  line-height: 2;
+}
+
+/* ── Band beat flash overlay ── */
+.beat-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0;
+  transition: opacity 0.08s;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">CEREBRO <em>DIGITAL</em></div>
+  <div class="controls">
+    <input type="file" id="fileInput" accept="audio/*">
+    <button class="btn" id="fileBtn">⬆ ARCHIVO</button>
+    <button class="btn" id="micBtn">⬤ MIC</button>
+    <button class="btn" id="demoBtn">⚡ DEMO</button>
+  </div>
+</header>
+
+<canvas id="canvas"></canvas>
+
+<div class="hud">
+  <div class="bands">
+    <div class="band">
+      <div class="band-pulse" id="p-kick" style="background:var(--kick)"></div>
+      <div class="band-bar"><div class="band-fill" id="b-kick" style="background:linear-gradient(to top, var(--kick), rgba(255,80,120,0.6))"></div></div>
+      <div class="band-label" style="color:var(--kick)">KICK</div>
+    </div>
+    <div class="band">
+      <div class="band-pulse" id="p-bass" style="background:var(--bass)"></div>
+      <div class="band-bar"><div class="band-fill" id="b-bass" style="background:linear-gradient(to top, var(--bass), rgba(160,100,255,0.6))"></div></div>
+      <div class="band-label" style="color:var(--bass)">BASS</div>
+    </div>
+    <div class="band">
+      <div class="band-pulse" id="p-voice" style="background:var(--voice)"></div>
+      <div class="band-bar"><div class="band-fill" id="b-voice" style="background:linear-gradient(to top, var(--voice), rgba(0,255,220,0.5))"></div></div>
+      <div class="band-label" style="color:var(--voice)">VOZ</div>
+    </div>
+    <div class="band">
+      <div class="band-pulse" id="p-hihats" style="background:var(--hihats)"></div>
+      <div class="band-bar"><div class="band-fill" id="b-hihats" style="background:linear-gradient(to top, var(--hihats), rgba(255,240,120,0.5))"></div></div>
+      <div class="band-label" style="color:var(--hihats)">HI-HAT</div>
+    </div>
+  </div>
+  <div class="hud-right">
+    <div class="status" id="status">● EN ESPERA</div>
+    <div class="hint">CLICK → NEURONA NUEVA<br>HOVER → ACTIVAR ZONA</div>
+  </div>
+</div>
+
+<div class="splash" id="splash">
+  <h2>CEREBRO DIGITAL</h2>
+  <p>CARGA UN ARCHIVO DE AUDIO · ACTIVA EL MIC · O PRUEBA EL DEMO</p>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════
+//  CEREBRO DIGITAL — Audio Reactive Neural Visualizer
+// ════════════════════════════════════════════════════════
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', () => { resize(); buildNetwork(); });
+
+// ── Band definitions ──────────────────────────────────
+const BANDS = {
+  kick:   { color:[255,50,85],   hex:'#ff3255', min:20,   max:80,    thresh:1.40, cool:280 },
+  bass:   { color:[157,60,255],  hex:'#9d3cff', min:80,   max:250,   thresh:1.30, cool:180 },
+  voice:  { color:[0,220,255],   hex:'#00dcff', min:250,  max:3000,  thresh:1.50, cool:90  },
+  hihats: { color:[255,220,50],  hex:'#ffdc32', min:8000, max:16000, thresh:1.65, cool:70  },
+};
+
+const BAND_NAMES = Object.keys(BANDS);
+const HISTORY = 60;
+const energyHist  = { kick:[], bass:[], voice:[], hihats:[] };
+const bandEnergy  = { kick:0,  bass:0,  voice:0,  hihats:0  };
+const lastBeat    = { kick:0,  bass:0,  voice:0,  hihats:0  };
+
+// ── Audio context ─────────────────────────────────────
+let audioCtx, analyser, dataArray, source, micStream;
+let isPlaying   = false;
+let demoTimer   = null;
+let idleTimer   = null;
+
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize              = 2048;
+  analyser.smoothingTimeConstant = 0.82;
+  dataArray = new Float32Array(analyser.frequencyBinCount);
+  analyser.connect(audioCtx.destination);
+}
+
+function stopSource() {
+  if (source) {
+    try { source.stop(); } catch(_) {}
+    try { source.disconnect(); } catch(_) {}
+    source = null;
+  }
+  if (micStream) {
+    micStream.getTracks().forEach(t => t.stop());
+    micStream = null;
+  }
+}
+
+function getBandEnergy(min, max) {
+  const nyq    = audioCtx.sampleRate / 2;
+  const bins   = analyser.frequencyBinCount;
+  const lo     = Math.max(0, Math.floor(min / nyq * bins));
+  const hi     = Math.min(bins - 1, Math.floor(max / nyq * bins));
+  let sum = 0, count = hi - lo + 1;
+  for (let i = lo; i <= hi; i++) {
+    const v = dataArray[i] + 140;        // dB → positive
+    sum += v * v;
+  }
+  return Math.sqrt(sum / count);
+}
+
+function detectBeat(name) {
+  const b   = BANDS[name];
+  const e   = getBandEnergy(b.min, b.max);
+  bandEnergy[name] = e;
+  const h   = energyHist[name];
+  h.push(e);
+  if (h.length > HISTORY) h.shift();
+  const avg = h.reduce((a, v) => a + v, 0) / h.length;
+  const now = Date.now();
+  if (e > avg * b.thresh && now - lastBeat[name] > b.cool) {
+    lastBeat[name] = now;
+    return { beat:true, intensity: Math.min(1, (e / avg - 1) / 0.7) };
+  }
+  return { beat:false, intensity:0 };
+}
+
+// ── Neural network ────────────────────────────────────
+const nodes  = [];
+const edges  = [];
+const pulses = [];
+
+const NODE_COUNT    = 95;
+const CONN_DIST     = 150;
+const MAX_CONN      = 5;
+
+class NeuralNode {
+  constructor(x, y) {
+    this.x = x; this.y = y;
+    this.ox = x; this.oy = y;
+    this.baseR = 2.5 + Math.random() * 3.5;
+    this.r     = this.baseR;
+    this.glow  = 0;
+    this.cr = 70; this.cg = 70; this.cb = 110;
+    this.vx = (Math.random() - 0.5) * 0.12;
+    this.vy = (Math.random() - 0.5) * 0.12;
+    this.connections = [];
+  }
+
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    if (this.x < 15 || this.x > canvas.width  - 15) this.vx *= -1;
+    if (this.y < 15 || this.y > canvas.height - 15) this.vy *= -1;
+    this.glow  *= 0.92;
+    this.r      = this.baseR + this.glow * 7;
+    this.cr += (70  - this.cr) * 0.07;
+    this.cg += (70  - this.cg) * 0.07;
+    this.cb += (110 - this.cb) * 0.07;
+  }
+
+  excite(col, intensity) {
+    this.glow = Math.min(1, this.glow + intensity);
+    const f = 0.75;
+    this.cr += (col[0] - this.cr) * f;
+    this.cg += (col[1] - this.cg) * f;
+    this.cb += (col[2] - this.cb) * f;
+  }
+
+  draw() {
+    const r  = this.r;
+    const a  = 0.35 + this.glow * 0.65;
+    const ri = Math.round(this.cr);
+    const gi = Math.round(this.cg);
+    const bi = Math.round(this.cb);
+
+    if (this.glow > 0.02) {
+      const grd = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, r * 5);
+      grd.addColorStop(0,   `rgba(${ri},${gi},${bi},${a * 0.7})`);
+      grd.addColorStop(0.35,`rgba(${ri},${gi},${bi},${a * 0.25})`);
+      grd.addColorStop(1,   `rgba(${ri},${gi},${bi},0)`);
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, r * 5, 0, Math.PI * 2);
+      ctx.fillStyle = grd;
+      ctx.fill();
+    }
+
+    // node body
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${ri},${gi},${bi},${a})`;
+    ctx.fill();
+
+    // bright core
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, r * 0.38, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${a * 0.85})`;
+    ctx.fill();
+  }
+}
+
+class NeuralEdge {
+  constructor(a, b) {
+    this.a = a;
+    this.b = b;
+    this.baseAlpha = 0.05 + Math.random() * 0.07;
+  }
+
+  draw() {
+    const a = this.a, b = this.b;
+    const glowA = a.glow, glowB = b.glow;
+    const alpha  = this.baseAlpha + (glowA + glowB) * 0.12;
+
+    const grd = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+    grd.addColorStop(0, `rgba(${Math.round(a.cr)},${Math.round(a.cg)},${Math.round(a.cb)},${alpha})`);
+    grd.addColorStop(1, `rgba(${Math.round(b.cr)},${Math.round(b.cg)},${Math.round(b.cb)},${alpha})`);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.strokeStyle = grd;
+    ctx.lineWidth   = 0.7 + (glowA + glowB) * 0.5;
+    ctx.stroke();
+  }
+}
+
+class Pulse {
+  constructor(from, to, color, speed) {
+    this.from  = from;
+    this.to    = to;
+    this.color = color;
+    this.t     = 0;
+    this.speed = speed || 0.022 + Math.random() * 0.018;
+    this.size  = 2.5 + Math.random() * 3;
+    this.str   = 0.75 + Math.random() * 0.25;
+    this.alive = true;
+    this.trail = [];
+    this.hops  = 0;
+    this.maxHops = 2 + Math.floor(Math.random() * 3);
+  }
+
+  update() {
+    this.t += this.speed;
+    if (this.t >= 1) {
+      this.alive = false;
+      this.to.excite(this.color, this.str * 0.45);
+      if (this.hops < this.maxHops && this.to.connections.length) {
+        const next = this.to.connections[Math.floor(Math.random() * this.to.connections.length)];
+        if (next !== this.from) {
+          const p = new Pulse(this.to, next, this.color, this.speed * 0.93);
+          p.hops    = this.hops + 1;
+          p.maxHops = this.maxHops;
+          p.str     = this.str * 0.85;
+          pulses.push(p);
+        }
+      }
+      return;
+    }
+    const x = this.from.x + (this.to.x - this.from.x) * this.t;
+    const y = this.from.y + (this.to.y - this.from.y) * this.t;
+    this.trail.push({ x, y });
+    if (this.trail.length > 12) this.trail.shift();
+  }
+
+  draw() {
+    const [r,g,b] = this.color;
+    const x = this.from.x + (this.to.x - this.from.x) * this.t;
+    const y = this.from.y + (this.to.y - this.from.y) * this.t;
+
+    // trail
+    for (let i = 0; i < this.trail.length; i++) {
+      const p  = this.trail[i];
+      const pct = i / this.trail.length;
+      const a  = pct * this.str * 0.55;
+      const s  = this.size * pct * 0.55;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, s, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${r},${g},${b},${a})`;
+      ctx.fill();
+    }
+
+    // glow halo
+    const grd = ctx.createRadialGradient(x, y, 0, x, y, this.size * 4);
+    grd.addColorStop(0,   `rgba(${r},${g},${b},${this.str * 0.8})`);
+    grd.addColorStop(0.4, `rgba(${r},${g},${b},${this.str * 0.3})`);
+    grd.addColorStop(1,   `rgba(${r},${g},${b},0)`);
+    ctx.beginPath();
+    ctx.arc(x, y, this.size * 4, 0, Math.PI * 2);
+    ctx.fillStyle = grd;
+    ctx.fill();
+
+    // hot core
+    ctx.beginPath();
+    ctx.arc(x, y, this.size * 0.8, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${this.str * 0.95})`;
+    ctx.fill();
+  }
+}
+
+// ── Build network ─────────────────────────────────────
+function buildNetwork() {
+  nodes.length  = 0;
+  edges.length  = 0;
+  pulses.length = 0;
+
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+
+  for (let i = 0; i < NODE_COUNT; i++) {
+    // Brain-ellipse distribution
+    const angle = Math.random() * Math.PI * 2;
+    const rad   = Math.pow(Math.random(), 0.45);
+    const x     = cx + Math.cos(angle) * rad * W * 0.42;
+    const y     = cy + Math.sin(angle) * rad * H * 0.38;
+    nodes.push(new NeuralNode(
+      Math.max(20, Math.min(W - 20, x)),
+      Math.max(20, Math.min(H - 20, y))
+    ));
+  }
+
+  // Connect nearest neighbours
+  for (let i = 0; i < nodes.length; i++) {
+    const dists = [];
+    for (let j = 0; j < nodes.length; j++) {
+      if (i === j) continue;
+      const dx = nodes[i].x - nodes[j].x;
+      const dy = nodes[i].y - nodes[j].y;
+      const d  = Math.sqrt(dx * dx + dy * dy);
+      if (d < CONN_DIST) dists.push({ j, d });
+    }
+    dists.sort((a, b) => a.d - b.d);
+    for (let k = 0; k < Math.min(MAX_CONN, dists.length); k++) {
+      const j = dists[k].j;
+      if (!nodes[i].connections.includes(nodes[j])) {
+        nodes[i].connections.push(nodes[j]);
+        nodes[j].connections.push(nodes[i]);
+        const exists = edges.some(e =>
+          (e.a === nodes[i] && e.b === nodes[j]) ||
+          (e.a === nodes[j] && e.b === nodes[i])
+        );
+        if (!exists) edges.push(new NeuralEdge(nodes[i], nodes[j]));
+      }
+    }
+  }
+}
+buildNetwork();
+
+// ── Trigger visual beat ───────────────────────────────
+function triggerBeat(name, intensity) {
+  const col = BANDS[name].color;
+  const H   = canvas.height;
+  const num = Math.floor(3 + intensity * 9);
+
+  // Spatial origin per band
+  const zoneFilter = {
+    kick:   n => n.y > H * 0.5,
+    bass:   n => n.y > H * 0.3 && n.y < H * 0.82,
+    voice:  n => n.y < H * 0.65,
+    hihats: n => n.y < H * 0.42,
+  };
+
+  let pool = nodes.filter(zoneFilter[name]);
+  if (!pool.length) pool = nodes;
+
+  for (let i = 0; i < num; i++) {
+    const src = pool[Math.floor(Math.random() * pool.length)];
+    src.excite(col, intensity * 0.8);
+    const spawns = Math.min(src.connections.length, 1 + Math.floor(intensity * 2));
+    for (let p = 0; p < spawns; p++) {
+      const tgt = src.connections[Math.floor(Math.random() * src.connections.length)];
+      const pulse = new Pulse(src, tgt, col);
+      pulse.maxHops = 2 + Math.floor(intensity * 4);
+      pulses.push(pulse);
+    }
+  }
+
+  // Flash HUD dot
+  const dot = document.getElementById('p-' + name);
+  dot.classList.add('flash');
+  setTimeout(() => dot.classList.remove('flash'), 120);
+}
+
+// ── Idle ambient pulses ───────────────────────────────
+function startIdle() {
+  stopIdle();
+  idleTimer = setInterval(() => {
+    if (isPlaying) return;
+    const n = nodes[Math.floor(Math.random() * nodes.length)];
+    n.excite([70, 90, 160], 0.25);
+    if (n.connections.length) {
+      const t = n.connections[Math.floor(Math.random() * n.connections.length)];
+      const p = new Pulse(n, t, [70, 100, 180], 0.015);
+      p.maxHops = 1;
+      p.str = 0.25;
+      pulses.push(p);
+    }
+  }, 220);
+}
+function stopIdle() {
+  if (idleTimer) { clearInterval(idleTimer); idleTimer = null; }
+}
+startIdle();
+
+// ── HUD bars ──────────────────────────────────────────
+const hudBars = {
+  kick:   document.getElementById('b-kick'),
+  bass:   document.getElementById('b-bass'),
+  voice:  document.getElementById('b-voice'),
+  hihats: document.getElementById('b-hihats'),
+};
+
+function setHudBar(name, level) {
+  hudBars[name].style.height = Math.min(100, level * 100) + '%';
+}
+
+// ── Mouse ─────────────────────────────────────────────
+canvas.addEventListener('mousemove', e => {
+  const mx = e.clientX, my = e.clientY;
+  nodes.forEach(n => {
+    const dx = n.x - mx, dy = n.y - my;
+    const d  = Math.sqrt(dx * dx + dy * dy);
+    if (d < 90) n.excite([0, 200, 255], (90 - d) / 90 * 0.28);
+  });
+});
+
+canvas.addEventListener('click', e => {
+  const n = new NeuralNode(e.clientX, e.clientY);
+  n.excite([255,255,255], 1);
+  nodes.forEach(ex => {
+    const dx = ex.x - n.x, dy = ex.y - n.y;
+    const d  = Math.sqrt(dx * dx + dy * dy);
+    if (d < CONN_DIST && n.connections.length < MAX_CONN) {
+      n.connections.push(ex);
+      ex.connections.push(n);
+      edges.push(new NeuralEdge(n, ex));
+    }
+  });
+  nodes.push(n);
+  n.connections.slice(0, 2).forEach(t =>
+    pulses.push(new Pulse(n, t, [255,255,255]))
+  );
+});
+
+// ── Render loop ───────────────────────────────────────
+function render() {
+  requestAnimationFrame(render);
+
+  const W = canvas.width, H = canvas.height;
+
+  // Motion-blur fade
+  ctx.fillStyle = 'rgba(4,4,10,0.22)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Analyze audio
+  if (isPlaying && analyser) {
+    analyser.getFloatFrequencyData(dataArray);
+    BAND_NAMES.forEach(name => {
+      const res  = detectBeat(name);
+      const norm = Math.min(1, bandEnergy[name] / 62);
+      setHudBar(name, norm);
+      if (res.beat) triggerBeat(name, res.intensity);
+    });
+  }
+
+  // Draw
+  edges.forEach(e => e.draw());
+
+  for (let i = pulses.length - 1; i >= 0; i--) {
+    pulses[i].update();
+    if (!pulses[i].alive) pulses.splice(i, 1);
+    else                  pulses[i].draw();
+  }
+
+  nodes.forEach(n => { n.update(); n.draw(); });
+
+  // Pulse cap
+  if (pulses.length > 600) pulses.splice(0, pulses.length - 600);
+}
+
+render();
+
+// ── Controls ──────────────────────────────────────────
+const statusEl = document.getElementById('status');
+const splashEl = document.getElementById('splash');
+
+function hideSplash() { splashEl.classList.add('hidden'); }
+
+// File
+document.getElementById('fileBtn').addEventListener('click', () =>
+  document.getElementById('fileInput').click()
+);
+
+document.getElementById('fileInput').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  initAudio();
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+  stopDemoMode();
+  stopSource();
+
+  try {
+    const buf = await file.arrayBuffer();
+    const decoded = await audioCtx.decodeAudioData(buf);
+    source = audioCtx.createBufferSource();
+    source.buffer = decoded;
+    source.connect(analyser);
+    source.loop  = true;
+    source.start();
+    isPlaying = true;
+    statusEl.textContent = '● ' + file.name.toUpperCase().slice(0, 22);
+    hideSplash();
+    stopIdle();
+    document.getElementById('fileBtn').classList.add('active');
+    document.getElementById('micBtn').classList.remove('active');
+    document.getElementById('demoBtn').classList.remove('active');
+  } catch(err) {
+    alert('Error al decodificar audio: ' + err.message);
+  }
+  e.target.value = '';
+});
+
+// Mic
+document.getElementById('micBtn').addEventListener('click', async () => {
+  initAudio();
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+  stopDemoMode();
+  stopSource();
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    source    = audioCtx.createMediaStreamSource(micStream);
+    source.connect(analyser);
+    isPlaying = true;
+    statusEl.textContent = '● MICRÓFONO ACTIVO';
+    hideSplash();
+    stopIdle();
+    document.getElementById('micBtn').classList.add('active');
+    document.getElementById('fileBtn').classList.remove('active');
+    document.getElementById('demoBtn').classList.remove('active');
+  } catch(err) {
+    alert('No se pudo acceder al micrófono: ' + err.message);
+  }
+});
+
+// Demo
+function stopDemoMode() {
+  if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
+  isPlaying = false;
+}
+
+document.getElementById('demoBtn').addEventListener('click', () => {
+  if (demoTimer) {
+    stopDemoMode();
+    startIdle();
+    statusEl.textContent = '● EN ESPERA';
+    document.getElementById('demoBtn').classList.remove('active');
+    return;
+  }
+  stopSource();
+  stopIdle();
+  hideSplash();
+  document.getElementById('demoBtn').classList.add('active');
+  document.getElementById('fileBtn').classList.remove('active');
+  document.getElementById('micBtn').classList.remove('active');
+  statusEl.textContent = '● DEMO — 120 BPM';
+
+  let tick = 0;
+  const BPM = 120, ms = 60000 / BPM / 4; // 16th notes
+
+  demoTimer = setInterval(() => {
+    tick++;
+    const t16 = tick % 16;
+
+    // Kick  → beats 1, 9
+    if (t16 === 0 || t16 === 8) {
+      const i = 0.65 + Math.random() * 0.35;
+      triggerBeat('kick', i);
+      setHudBar('kick', 0.55 + Math.random() * 0.45);
+      setTimeout(() => setHudBar('kick', 0.08), 120);
+    }
+    // Bass  → beats 1, 5, 9, 13
+    if (t16 % 4 === 0) {
+      const i = 0.45 + Math.random() * 0.45;
+      triggerBeat('bass', i);
+      setHudBar('bass', 0.45 + Math.random() * 0.5);
+      setTimeout(() => setHudBar('bass', 0.12), 160);
+    }
+    // Voice → random hits
+    if (Math.random() < 0.12) {
+      const i = 0.25 + Math.random() * 0.45;
+      triggerBeat('voice', i);
+      setHudBar('voice', 0.25 + Math.random() * 0.55);
+      setTimeout(() => setHudBar('voice', 0.07), 90);
+    }
+    // Hi-hats → every 2 16th notes
+    if (tick % 2 === 0) {
+      const i = 0.18 + Math.random() * 0.35;
+      triggerBeat('hihats', i);
+      setHudBar('hihats', 0.2 + Math.random() * 0.65);
+      setTimeout(() => setHudBar('hihats', 0.04), 55);
+    }
+  }, ms);
+});
+</script>
+</body>
+</html>
